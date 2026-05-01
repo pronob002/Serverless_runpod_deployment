@@ -6,41 +6,14 @@
 
 <hr>
 
-<h2>🏗️ Architecture Visualization</h2>
+## 🏗️ Architecture Visualization
 
-<p>This system strictly separates the <strong>Data Path</strong> (heavy media files) from the <strong>Control Path</strong> (lightweight task queues).</p>
+This system strictly separates the **Data Path** (heavy media files) from the **Control Path** (lightweight task queues). 
 
-<ul>
-    <li><strong>Supabase (The Warehouse):</strong> Stores the massive PDFs and MP3s.</li>
-    <li><strong>Upstash Redis (The Message Broker):</strong> Stores tiny JSON "tickets" telling the GPU worker what to do.</li>
-</ul>
+*   **Supabase (The Warehouse):** Stores the massive PDFs and MP3s.
+*   **Upstash Redis (The Message Broker):** Stores tiny JSON "tickets" telling the GPU worker what to do.
 
-<pre class="mermaid">
-sequenceDiagram
-    participant User as Swagger UI (User)
-    participant API as FastAPI (Local PC)
-    participant Supabase as Supabase (Storage)
-    participant Redis as Upstash Redis (Queue)
-    participant Worker as Colab GPU (Worker)
-
-    User-&gt;&gt;API: 1. Upload PDF &amp; Voice MP3
-    API-&gt;&gt;Supabase: 2. Upload Heavy Files (Data Path)
-    API-&gt;&gt;Redis: 3. Post Task Ticket (Control Path)
-    API--&gt;&gt;User: Return Task ID (Status: PENDING)
-    
-    Note over Worker: Constantly polling Redis...
-    Redis-&gt;&gt;Worker: 4. Worker Claims Ticket
-    Worker-&gt;&gt;Supabase: 5. Download PDF &amp; MP3
-    
-    Note over Worker: 🧠 GPU Pipeline:&lt;br/&gt;1. Marker (Extract)&lt;br/&gt;2. Groq (Emotion Tags)&lt;br/&gt;3. VoxCPM (Voice Clone)
-    
-    Worker-&gt;&gt;Supabase: 6. Upload Final Audiobook (.wav)
-    Worker-&gt;&gt;Redis: 7. Update Ticket to SUCCESS + URL
-    
-    User-&gt;&gt;API: 8. Poll Status Endpoint
-    API-&gt;&gt;Redis: Check Ticket Status
-    API--&gt;&gt;User: Return Public Audio URL
-</pre>
+![Audiobook System Architecture](architecture.png)
 
 <hr>
 
