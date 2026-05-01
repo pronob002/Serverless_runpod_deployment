@@ -1,18 +1,16 @@
 import os
 import uuid
 from fastapi import FastAPI, UploadFile, File, HTTPException
-import firebase_admin
-from firebase_admin import credentials, storage
+from supabase import create_client, Client
 from celery.result import AsyncResult
 from celery_app import celery_app
 from dotenv import load_dotenv
 
 load_dotenv()
 
-cred = credentials.Certificate("firebase_credentials.json")
-firebase_admin.initialize_app(cred, {
-    'storageBucket': os.getenv("FIREBASE_BUCKET_NAME")
-})
+# Initialize Supabase
+supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+bucket_name = os.getenv("SUPABASE_BUCKET", "audiobooks")
 
 app = FastAPI(title="Audiobook MVP Backend")
 
@@ -23,19 +21,31 @@ async def generate_audiobook(
 ):
     try:
         task_id = str(uuid.uuid4())
-        bucket = storage.bucket()
-        
-        pdf_blob_path = f"inputs/{task_id}/{pdf.filename}"
-        mp3_blob_path = f"inputs/{task_id}/{mp3.filename}"
 
-        pdf_blob = bucket.blob(pdf_blob_path)
-        pdf_blob.upload_from_file(pdf.file, content_type="application/pdf")
+        # Define Storage paths
+        pdf_path = f"inputs/{task_id}/{pdf.filename}"
+        mp3_path = f"inputs/{task_id}/{mp3.filename}"
 
-        mp3_blob = bucket.blob(mp3_blob_path)
-        mp3_blob.upload_from_file(mp3.file, content_type="audio/mpeg")
+        # Read files into memory
+        pdf_bytes = await pdf.read()
+        mp3_bytes = await mp3.read()
+
+        # Upload to Supabase
+        supabase.storage.from_(bucket_name).upload(
+            path=pdf_path, 
+            file=pdf_bytes, 
+            file_options={"content-type": "application/pdf"}
+        )
+        supabase.storage.from_(bucket_name).upload(
+            path=mp3_path, 
+            file=mp3_bytes, 
+            file_options={"content-type": "audio/mpeg"}
+        )
+
+        # Push task payload to Celery
         celery_app.send_task(
             "worker.process_audiobook",
-            args=[task_id, pdf_blob_path, mp3_blob_path],
+            args=[task_id, pdf_path, mp3_path],
             task_id=task_id
         )
 

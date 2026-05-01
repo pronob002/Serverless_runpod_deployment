@@ -2,6 +2,6 @@ fastapi
 uvicorn
 celery
 redis
-firebase-admin
+supabase
 python-dotenv
 python-multipart
