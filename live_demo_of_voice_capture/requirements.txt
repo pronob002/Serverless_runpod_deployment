@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+opencv-python
+mediapipe
+numpy
+librosa
+soundfile
+noisereduce
+python-multipart
+# sounddevice  # only needed for the legacy server-side recorder (CaptureSession); browser captures audio now
