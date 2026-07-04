@@ -1,0 +1,105 @@
+# =============================================================================
+# requirements.txt for dots.tts Voice Cloning Notebook
+# Model: rednote-hilab/dots.tts
+# Repo:  https://github.com/rednote-hilab/dots.tts
+# Python: 3.10 - 3.12
+# =============================================================================
+
+# ── Core dots.tts dependencies (from pyproject.toml) ─────────────────────────
+# Install dots.tts itself from source FIRST (see setup instructions below).
+# The packages below are what dots.tts and this notebook require.
+
+torch>=2.8.0
+torchaudio>=2.8.0
+transformers>=4.57.0
+huggingface-hub
+loguru
+langcodes[data]
+gradio
+einops
+librosa>=0.11.0
+soundfile>=0.13.1
+numpy>=2.2.6
+pydantic>=2.12.5,<3
+PyYAML>=6.0.3
+safetensors>=0.8.0rc0
+torchdiffeq
+tqdm
+lingua-language-detector
+WeTextProcessing
+
+# ── Notebook visualization & audio utilities ──────────────────────────────────
+matplotlib
+pandas
+ipython
+ipywidgets
+jupyterlab
+
+# ── WER (Word Error Rate) accuracy metric ─────────────────────────────────────
+openai-whisper
+jiwer
+
+# ── Speaker Similarity (SIM) metric ──────────────────────────────────────────
+speechbrain
+
+# ── Optional: synthetic reference audio (no microphone) ──────────────────────
+pyttsx3
+
+# =============================================================================
+# SETUP INSTRUCTIONS
+# =============================================================================
+#
+# Step 1 — Create conda environment (recommended):
+#   conda create -n dots_tts python=3.10 -y
+#   conda activate dots_tts
+#
+# Step 2 — Clone and install dots.tts from source:
+#   git clone https://github.com/rednote-hilab/dots.tts.git
+#   cd dots.tts
+#   pip install -e . -c constraints/recommended.txt
+#
+# Step 3 — Install this requirements.txt:
+#   pip install -r requirements.txt
+#
+# Step 4 — Launch Jupyter:
+#   jupyter lab dots_tts_voice_cloning_test.ipynb
+#
+# =============================================================================
+# RECOMMENDED PINNED VERSIONS (from constraints/recommended.txt in the repo)
+# =============================================================================
+# These are the tested pinned versions. If you hit conflicts, install with:
+#   pip install -r requirements.txt -c constraints/recommended.txt
+# (constraints/recommended.txt is inside the cloned dots.tts repo)
+#
+# Key tested versions as of June 2026:
+#   torch==2.8.0
+#   torchaudio==2.8.0
+#   transformers==4.57.0
+#   numpy==2.2.6
+#   pydantic==2.12.5
+#   soundfile==0.13.1
+#   librosa==0.11.0
+#   safetensors==0.5.3
+#
+# =============================================================================
+# GPU NOTES
+# =============================================================================
+#
+# CUDA GPU (recommended for speed):
+#   Install PyTorch with CUDA support:
+#   pip install torch>=2.8.0 torchaudio>=2.8.0 --index-url https://download.pytorch.org/whl/cu121
+#
+# Apple Silicon (M1/M2/M3 Mac):
+#   Use the MLX community port: https://github.com/sb1992/dots-tts-mlx
+#   pip install mlx
+#
+# CPU only (slow but works):
+#   pip install torch>=2.8.0 torchaudio>=2.8.0 --index-url https://download.pytorch.org/whl/cpu
+#   Set PRECISION='float32' and OPTIMIZE=False in Cell 2 of the notebook.
+#
+# =============================================================================
+# OPTIONAL: Fine-tuning / training extras
+# =============================================================================
+# accelerate>=1.12.0
+# tensorboard>=2.20.0
+# ruff>=0.15.12

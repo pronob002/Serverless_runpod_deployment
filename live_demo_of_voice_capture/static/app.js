@@ -41,14 +41,19 @@ const startBtn   = document.getElementById("startBtn");
 const stopBtn    = document.getElementById("stopBtn");
 const fileInput  = document.getElementById("fileInput");
 const uploadBtn  = document.getElementById("uploadBtn");
+const nameInput  = document.getElementById("nameInput");
 const stepsEl    = document.getElementById("steps");
 const logEl      = document.getElementById("log");
 const badgeEl    = document.getElementById("overallBadge");
 const resultBox  = document.getElementById("resultBox");
 const resultJson = document.getElementById("resultJson");
+const module2Banner = document.getElementById("module2Banner");
 
 let eventSource = null;
 const stepRows = {}; // id -> { row, icon, detail }
+
+let currentSessionId = null;   // set from the /upload response, used to link into Module 2
+let autoCloneEnabled = false;  // reported by /upload; true = server auto-starts Module 2
 
 let PROTOCOL = null;          // fetched from /config
 let mediaStream = null;
@@ -111,7 +116,22 @@ function resetUI(mode) {
   logEl.innerHTML = "";
   resultBox.classList.add("hidden");
   resultJson.textContent = "";
+  module2Banner.classList.add("hidden");
+  module2Banner.innerHTML = "";
+  currentSessionId = null;
   setBadge("running", mode === "upload" ? "Analyzing" : "Recording");
+}
+
+// Show the handoff to Module 2 — either "auto-cloning started" or a manual "run it" link.
+function showModule2Banner(sessionId, model, auto) {
+  if (!sessionId) return;
+  const href = `/module2?session=${encodeURIComponent(sessionId)}`;
+  module2Banner.innerHTML = auto
+    ? `🎙 Voice cloning started automatically with <b>${model}</b> for <b>${sessionId}</b>. ` +
+      `<a href="${href}">Open Module 2 to listen →</a>`
+    : `Capture saved as <b>${sessionId}</b>. ` +
+      `<a href="${href}">Open Module 2 to run voice cloning →</a>`;
+  module2Banner.classList.remove("hidden");
 }
 
 function setBusy(busy) {
@@ -163,6 +183,12 @@ function handleEvent(ev) {
       resultJson.textContent = JSON.stringify(ev.result, null, 2);
       const pass = ev.result.overall_result === "pass";
       setBadge(pass ? "pass" : "fail", pass ? "Pass" : "Fail");
+      // Only a passing capture goes on to Module 2. If auto-clone is off, offer a manual handoff.
+      if (pass && !autoCloneEnabled) showModule2Banner(currentSessionId, null, false);
+      break;
+    case "autoclone":
+      if (ev.status === "started") showModule2Banner(ev.session_id, ev.model, true);
+      else addLog("Auto-clone skipped: " + (ev.reason || "unknown reason"));
       break;
     case "done":
       if (ev.status === "cancelled") setBadge("idle", "Cancelled");
@@ -207,6 +233,11 @@ function runPhase(headline, subtext, durationSec, stepId) {
 
 async function start() {
   if (!PROTOCOL) { addLog("Protocol not loaded yet — try again in a moment."); return; }
+  if (!nameInput.value.trim()) {
+    addLog("Enter a recording name before starting.");
+    nameInput.focus();
+    return;
+  }
 
   setBusy(true);
   resetUI("live");
@@ -299,6 +330,7 @@ async function onRecordingStopped() {
 
   const form = new FormData();
   form.append("file", blob, `capture.${ext}`);
+  form.append("name", nameInput.value.trim());
   let res;
   try {
     res = await fetch("/upload", { method: "POST", body: form });
@@ -309,16 +341,18 @@ async function onRecordingStopped() {
     finish();
     return;
   }
+  const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
     addLog("Upload failed: " + (body.error || res.status));
     setStep("upload", "fail");
     setBadge("fail", "Error");
     finish();
     return;
   }
+  currentSessionId = body.session_id || null;
+  autoCloneEnabled = !!body.auto_clone;
   setStep("upload", "pass");
-  addLog("Upload complete — analyzing…");
+  addLog(`Upload complete (session ${currentSessionId}) — analyzing…`);
   subscribeEvents();
 }
 
@@ -334,6 +368,7 @@ async function uploadAndAnalyze() {
 
   const form = new FormData();
   form.append("file", file);
+  form.append("name", nameInput.value.trim());
   let res;
   try {
     res = await fetch("/upload", { method: "POST", body: form });
@@ -343,14 +378,16 @@ async function uploadAndAnalyze() {
     finish();
     return;
   }
+  const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
     addLog("Upload failed: " + (body.error || res.status));
     setBadge("fail", "Error");
     finish();
     return;
   }
-  addLog("Upload complete — analyzing…");
+  currentSessionId = body.session_id || null;
+  autoCloneEnabled = !!body.auto_clone;
+  addLog(`Upload complete (session ${currentSessionId}) — analyzing…`);
   subscribeEvents();
 }
 

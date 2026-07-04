@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Module 2 — Voice Cloning Compare</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/module2.css" />
+</head>
+<body>
+  <header>
+    <h1>Module 2 — Voice Cloning</h1>
+    <span class="subtitle">Run a model on a capture session &amp; compare by ear</span>
+    <a class="header-link" href="/">← Module 1 capture</a>
+  </header>
+
+  <main class="m2-main">
+    <!-- Controls -->
+    <section class="panel">
+      <div class="status-header">
+        <h2>Run a cloning model</h2>
+        <span id="runBadge" class="badge badge-idle">Idle</span>
+      </div>
+
+      <div class="m2-controls">
+        <label>Session
+          <select id="sessionSel"></select>
+        </label>
+        <label>Model
+          <select id="modelSel"></select>
+        </label>
+        <button id="runBtn" class="btn btn-primary">▶ Run cloning</button>
+        <button id="loadBtn" class="btn btn-ghost">↻ Load existing outputs</button>
+      </div>
+      <p class="hint">
+        Pick a Module 1 session and a cloning model, then <b>Run cloning</b> to generate samples
+        (heavy — needs the GPU env). Sessions show which models already have outputs; use
+        <b>Load existing outputs</b> to listen without re-running. Running a second model lands in
+        its own folder, so you can A/B them below.
+      </p>
+
+      <div class="log-section">
+        <h3>Progress</h3>
+        <div id="log" class="log"></div>
+      </div>
+    </section>
+
+    <!-- Results / comparison -->
+    <section class="panel">
+      <div class="status-header">
+        <h2>Compare</h2>
+        <span id="refLabel" class="badge badge-idle">no session</span>
+      </div>
+      <div id="refPlayer" class="m2-ref"></div>
+      <div id="compare" class="m2-compare">
+        <p class="hint">Run or load a model to see generated clips here, grouped by sentence.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/module2.js"></script>
+</body>
+</html>

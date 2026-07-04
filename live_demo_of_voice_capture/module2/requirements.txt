@@ -1,0 +1,12 @@
+# Module 2 (voice cloning) heavy dependencies — kept separate from the Module 1 app's
+# requirements.txt so the capture web app stays lightweight (no torch/GPU stack).
+#
+# Install into the GPU environment used by the R&D notebooks, then run:
+#   pip install -r module2/requirements.txt
+#
+# torch: install the build matching your CUDA (see https://pytorch.org). The plain wheel below
+# works for CPU/most setups; swap for a CUDA-specific index if needed.
+torch
+voxcpm
+soundfile
+numpy

@@ -242,9 +242,14 @@ class AnalysisSession:
     then analyzed.
     """
 
-    def __init__(self, video_path, output_dir="output"):
+    def __init__(self, video_path, output_dir="output", on_complete=None):
         self.video_path = video_path
         self.output_dir = output_dir
+        # Optional hook fired with the Module 1 result after a successful analysis. It may return
+        # an event dict to emit on this session's stream (used to auto-chain Module 2 without
+        # session.py needing to know anything about voice cloning). Kept out of the pipeline itself
+        # so the analysis stays a pure function.
+        self.on_complete = on_complete
         self.events = queue.Queue()
         self.active = False
         self._thread = None
@@ -304,13 +309,23 @@ class AnalysisSession:
             pass
 
         try:
-            pipeline.run_analysis(video_path, self._emit, output_dir=self.output_dir)
+            result = pipeline.run_analysis(video_path, self._emit, output_dir=self.output_dir)
         except Exception as e:
             self._emit({"type": "log", "text": f"Analysis error: {e}"})
             self._emit({"type": "stage", "stage": "result", "status": "fail", "detail": str(e)})
             self.active = False
             self._emit({"type": "done", "status": "error", "message": str(e)})
             return
+
+        # Auto-chain hook (e.g. kick off Module 2 cloning) — emit whatever it returns so the client
+        # can react before the stream closes. Never let a hook failure sink the analysis result.
+        if self.on_complete is not None:
+            try:
+                extra = self.on_complete(result)
+                if extra:
+                    self._emit(extra)
+            except Exception as e:
+                self._emit({"type": "log", "text": f"post-analysis hook error: {e}"})
 
         self.active = False
         self._emit({"type": "done", "status": "done", "message": "complete"})

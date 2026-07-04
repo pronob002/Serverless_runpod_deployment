@@ -15,6 +15,7 @@ Two sub-modules:
 
 import os
 import subprocess
+import urllib.request
 
 import cv2
 import numpy as np
@@ -31,7 +32,29 @@ from protocol import SEGMENT_BOUNDARIES, EMOTION_ORDER
 # ── Tunables (same starting points as the notebook) ───────────────────────────
 MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "face_landmarker.task")
+MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker/"
+             "face_landmarker/float16/1/face_landmarker.task")
 YAW_THRESHOLD_DEGREES = 25.0
+
+
+def ensure_face_landmarker_model(model_path=MODEL_PATH, log=print):
+    """Download the MediaPipe face_landmarker model (~3.7MB) if it isn't already present.
+
+    The notebook downloads this one-time; the pipeline mirrors that so a fresh checkout doesn't
+    fail liveness with 'face_landmarker.task not found'. Returns True if the model is available.
+    """
+    if os.path.exists(model_path):
+        return True
+    log(f"Downloading face_landmarker.task (one-time, ~3.7MB) → {model_path}")
+    try:
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        urllib.request.urlretrieve(MODEL_URL, model_path)
+        log("Face landmarker model downloaded.")
+        return True
+    except Exception as e:
+        log(f"Could not download face_landmarker.task ({e}). "
+            f"Download it manually from {MODEL_URL} and place it at {model_path}.")
+        return False
 
 MIN_DURATION_SEC = 0.8
 MIN_RMS_LOUDNESS = 0.01
@@ -256,6 +279,7 @@ def run_analysis(video_path, emit, output_dir="output"):
 
     # ── 1A: liveness ──────────────────────────────────────────────────────────
     stage("liveness", "running", "Measuring head yaw…")
+    ensure_face_landmarker_model(log=log)  # fetch the model on first run if it's missing
     if not os.path.exists(MODEL_PATH):
         log(f"Missing model file: {MODEL_PATH}. Cannot run liveness.")
         sub1a_result = {"result": "fail", "reason": "model_missing"}

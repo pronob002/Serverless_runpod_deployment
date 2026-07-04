@@ -10,6 +10,7 @@
   <header>
     <h1>Module 1 — Identity &amp; Voice Capture</h1>
     <span class="subtitle">Guided capture &amp; analysis demo</span>
+    <a class="header-link" href="/module2" style="margin-left:auto;color:var(--dim);font-size:.85rem;text-decoration:none;">Module 2 — Voice Cloning →</a>
   </header>
 
   <main>
@@ -28,6 +29,15 @@
         </div>
         <div id="placeholder" class="placeholder">Camera idle — press Start</div>
       </div>
+
+      <div class="name-row">
+        <label for="nameInput">Recording name</label>
+        <input id="nameInput" type="text" placeholder="e.g. riad-enrollment-1" autocomplete="off" />
+      </div>
+      <p class="hint">
+        Give this recording a name before you start. It labels the saved session so you can find it
+        later (in the Module 2 compare page) and test voice cloning on it another time.
+      </p>
 
       <div class="controls">
         <button id="startBtn" class="btn btn-primary">● Open Camera &amp; Start</button>
@@ -64,6 +74,8 @@
         <h3>Logs</h3>
         <div id="log" class="log"></div>
       </div>
+
+      <div id="module2Banner" class="m2-banner hidden"></div>
 
       <div id="resultBox" class="result-box hidden">
         <h3>Final result</h3>

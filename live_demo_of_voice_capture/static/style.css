@@ -132,6 +132,24 @@ main {
 
 .hint { color: var(--dim); font-size: 0.82rem; line-height: 1.4; margin: 14px 2px 0; }
 
+.name-row { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.name-row label { font-size: 0.78rem; color: var(--dim); }
+.name-row input {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--dim); border-radius: 8px;
+  padding: 10px 12px; font-size: 0.95rem;
+}
+.name-row input:focus { outline: none; border-color: var(--accent); }
+
+.m2-banner {
+  margin-top: 16px; padding: 12px 14px;
+  background: rgba(184, 71, 42, 0.12);
+  border: 1px solid var(--accent); border-radius: 10px;
+  font-size: 0.85rem; line-height: 1.5;
+}
+.m2-banner a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.m2-banner a:hover { text-decoration: underline; }
+
 .divider {
   display: flex; align-items: center; text-align: center;
   color: var(--dim); font-size: 0.78rem; margin: 18px 0 14px;

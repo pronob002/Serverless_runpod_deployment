@@ -54,7 +54,7 @@ with the fixed analysis windows: liveness 0–8s, then normal/loud/happy/angry/s
 # system deps (Debian/Ubuntu): ffmpeg for normalization + audio cut
 sudo apt-get update && sudo apt-get install -y ffmpeg
 
-cd live_demo
+cd live_demo_of_voice_capture
 pip install -r requirements.txt
 
 uvicorn app:app --host 0.0.0.0 --port 8000
@@ -89,6 +89,60 @@ the liveness pass/fail, per-emotion quality, and chosen anchors should match the
 `pipeline.run_analysis()` has a clearly-marked hook after the yaw check where a MiniFASNetV2 ONNX
 check would slot in. It is disabled by default (`ANTISPOOF_MODEL_PATH = None`).
 
+## Module 2 — Voice Cloning (batch)
+
+Once Module 1 has produced a session's clips, `module2/` clones that voice with a TTS model and
+generates a fixed set of test sentences so different models can be **compared by listening**. It is a
+standalone **offline batch runner** — the cloning models are heavy (~5GB weights, GPU), so they run
+outside the web app, once per model, whenever you want.
+
+Models are pluggable: each one is a `CloningAdapter` subclass (`module2/adapters/`) registered in
+`module2/registry.py`. Today only **VoxCPM2** (`voxcpm`) is wired; adding another (dots.tts,
+OpenVoice, …) is exactly *one adapter file + one registry line* — `runner.py`, `reference.py`, and
+`run.py` never change. The adapter interface already carries the flags that differ between models
+(`requires_reference_text`, `supports_style_prompt`), so e.g. a model that needs the reference
+transcript gets it from Module 1's fixed enrollment sentences (`protocol.EMOTION_SENTENCES`) with no
+speech-to-text step.
+
+```bash
+cd live_demo_of_voice_capture
+pip install -r module2/requirements.txt        # heavy: torch + voxcpm (GPU env)
+
+python -m module2.run --list-models            # -> voxcpm
+python -m module2.run --list-sessions          # sessions under output/ that have clips
+python -m module2.run --session <id> --model voxcpm
+```
+
+Output lands in `output/<session_id>/module2/<model>/`: one WAV per (test sentence × style
+variation) plus a `manifest.json` recording the model, params, device, and per-clip real-time-factor.
+Because each model writes to its own subfolder, running a second model later never clobbers the
+first — you end up with sibling `module2/voxcpm/`, `module2/dots_tts/`, … folders holding the same
+sentences to A/B by ear. Test sentences and style points live in `module2/test_sentences.py`
+(shared across all models, so the comparison is fair).
+
+### Test it from the browser
+
+The same runner is wired into the web app at **`/module2`** (linked from the Module 1 page header).
+Because triggering a run loads the model, **uvicorn must run in the GPU env** (torch + voxcpm), not
+the light Module 1 env:
+
+```bash
+cd live_demo_of_voice_capture
+# run the server from the environment that has module2/requirements.txt installed:
+python -m uvicorn app:app --host 0.0.0.0 --port 8000
+# open http://localhost:8000/module2
+```
+
+On the compare page: pick a **session** and **model**, click **Run cloning** — progress (model
+load, then each clip) streams live over SSE, and when it finishes the generated clips appear grouped
+by sentence with an audio player each, next to the **original reference clip** and any other models
+already run for that session. Use **Load existing outputs** to listen without re-generating. The web
+endpoints (`/module2/models`, `/module2/sessions`, `/module2/run`, `/module2/events`,
+`/module2/result`) live in `app.py`; the background-run glue is `module2/service.py`.
+
+> Note: if `torch.cuda.is_available()` is False in the server process it falls back to CPU (much
+> slower, but still works). Make sure the GPU isn't already occupied and that the server env sees it.
+
 ## Files
 
 | File          | Role                                                               |
@@ -98,3 +152,4 @@ check would slot in. It is disabled by default (`ANTISPOOF_MODEL_PATH = None`).
 | `pipeline.py` | Analysis functions lifted from the notebook + `run_analysis()`      |
 | `protocol.py` | Shared timing constants + `web_protocol()` (served via `/config`)  |
 | `static/`     | `index.html` (`<video>` + overlay), `app.js` (browser capture), `style.css` |
+| `module2/`    | Pluggable voice-cloning batch runner (adapters + registry + CLI); see "Module 2" above |
