@@ -1,3 +1,4 @@
+# ── Module 1 — capture web app (lightweight) ──────────────────────────────────
 fastapi
 uvicorn[standard]
 opencv-python
@@ -8,3 +9,14 @@ soundfile
 noisereduce
 python-multipart
 # sounddevice  # only needed for the legacy server-side recorder (CaptureSession); browser captures audio now
+
+# ── Module 2 — voice cloning (heavy, GPU) ─────────────────────────────────────
+# Merged in from module2/requirements.txt. These are large (~5GB weights, CUDA stack) and only
+# needed if you want to run/trigger voice cloning (the /module2 page or `python -m module2.run`).
+# Listing Module 1's routes and running capture/analysis does NOT need them, so you can comment the
+# block below out if you only want the light capture app.
+#
+# torch: install the build matching your CUDA (see https://pytorch.org). The plain wheel works for
+# CPU/most setups; swap for a CUDA-specific index if you have a GPU (recommended — cloning is slow on CPU).
+torch
+voxcpm

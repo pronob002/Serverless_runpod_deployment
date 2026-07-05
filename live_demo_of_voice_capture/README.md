@@ -1,73 +1,123 @@
-# Module 1 — Identity & Voice Capture (demo UI)
+# Voice Capture & Cloning Demo
 
-A browser demo for the **Module 1** pipeline. The **left** panel captures a guided clip using
-**this device's own camera** (the phone's camera on a phone, the webcam in a PC browser); the
-**right** panel shows each step (done / running / pending) and a streaming log, ending with the
-final Module 1 result JSON.
+A browser demo that runs two modules from a **single** FastAPI server:
 
-## Architecture (capture in the browser, analysis on the server)
+- **Module 1 — Identity & Voice Capture**: the browser records a guided clip (a head turn for
+  liveness + 5 short emotion prompts), uploads it, and the server checks liveness and voice quality
+  and picks voice anchors. The **left** panel captures using *this device's* camera (a phone's camera
+  on a phone, a webcam on a PC); the **right** panel streams each step and the final pass/fail result.
+- **Module 2 — Voice Cloning**: takes a captured session and clones that voice with a TTS model
+  (VoxCPM2), generating a fixed set of test sentences you can compare by ear at `/module2`.
 
-- **Capture is client-side.** The browser uses `getUserMedia` + `MediaRecorder` to record mic +
-  camera together, drawing the guided overlay (head-turn + 5 emotion prompts, with a countdown) over
-  a `<video>` element. This is why it uses whatever device opens the page — and why it works after
-  deployment, where the **server has no camera**.
-- **Analysis is server-side.** The recorded clip is uploaded; the server runs the same pipeline
-  (MediaPipe yaw liveness, librosa/noisereduce audio quality, anchor selection) and streams
-  step/log/result events back over Server-Sent Events.
+---
 
-The analysis functions are lifted, unchanged in behaviour, from
-`../Module1_Identity_Voice_Capture_with_new.ipynb` (now in `pipeline.py`); the protocol timing comes
-from `protocol.py` and is served to the browser via `GET /config` so the JS overlay can never drift
-from the windows the server analyzes by.
+## Quick start (get it running in 3 steps)
 
-### Upload normalization (important)
+```bash
+# 1. system dependency: ffmpeg (used to normalize uploaded video)
+sudo apt-get update && sudo apt-get install -y ffmpeg
 
-`MediaRecorder` output (WebM on Chrome/Firefox, MP4 on iOS Safari) often has unreliable/variable fps
-and duration metadata, which would break the pipeline's frame-index seeking and fixed-timestamp audio
-cuts. So every upload is first **re-encoded to a constant-frame-rate MP4** (`ffmpeg -r 30 libx264 …`)
-with rewritten timestamps, then analyzed. This makes the analysis codec-agnostic.
+# 2. install Python deps (from this folder)
+cd live_demo_of_voice_capture
+python -m venv venv && source venv/bin/activate     # optional but recommended
+pip install -r requirements.txt
 
-## Where files are stored (per session)
+# 3. run the server
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
 
-There are no user accounts yet, so each attempt gets a unique **session id**
-(`<timestamp>_<6-hex>`, returned by `/upload`) and nothing is overwritten across runs:
+Then open:
 
-- `recordings/capture_<session_id>.<ext>` — the uploaded clip, and `…_norm.mp4` its normalized copy.
-- `output/<session_id>/<emotion>_raw.wav` and `…_clean.wav` — the cut + denoised audio per emotion.
+| URL                              | Page                                        |
+|----------------------------------|---------------------------------------------|
+| <http://localhost:8000>          | **Module 1** — capture & analyze            |
+| <http://localhost:8000/module2>  | **Module 2** — run cloning & compare clips  |
 
-When real user identity is added later, swap the timestamp id for the user/enrollment id (the
-`output_dir` passed to `AnalysisSession` is the only thing that needs to change).
+That's it. The first time analysis runs, the ~3.7 MB MediaPipe `face_landmarker.task` model
+auto-downloads to the repo root — no manual step needed.
 
-## How it works
+### Requirements notes
+
+- **Python 3.10+** and **ffmpeg** are required.
+- `requirements.txt` includes **both** Module 1 (lightweight) **and** Module 2 (heavy: `torch`,
+  `voxcpm`) dependencies, so the one `pip install` above sets up everything.
+- **Only want the light capture app (no cloning)?** Comment out the Module 2 block at the bottom of
+  `requirements.txt` before installing — Module 1 does not need `torch`/`voxcpm`.
+- **Have a GPU?** Voice cloning is much faster on GPU (it falls back to CPU otherwise). Install the
+  CUDA build of PyTorch matching your setup from <https://pytorch.org> instead of the plain `torch`
+  wheel, e.g. `pip install torch --index-url https://download.pytorch.org/whl/cu121`.
+
+---
+
+## Using Module 1 — capture & analyze
+
+On <http://localhost:8000>:
+
+1. Type a **name** for the recording (it labels the session folder so you can find it later).
+2. Either:
+   - click **Open Camera & Start**, grant camera/mic, and follow the on-screen prompts (live capture), **or**
+   - pick a video file and click **Upload & Analyze** to run the same analysis on a pre-recorded clip.
+3. The right panel streams each step and ends with a combined **pass/fail** result.
+
+**Auto-chaining to Module 2 (enabled by default):** if a capture **passes**, cloning starts
+automatically with the default model and a banner links you to `/module2` to watch it. A **failed**
+Module 1 result is *not* sent to Module 2. Turn auto-chaining off with `MODULE2_AUTOCLONE=0`; pick
+the default model with `MODULE2_DEFAULT_MODEL=voxcpm`.
+
+### How the analysis works
 
 1. **Liveness (1A)** — MediaPipe yaw over the first 8s, thresholded for a genuine left→right turn.
 2. **Voice (1B)** — each 7s emotion window is cut → denoised → quality-checked.
 3. **Anchors** — `normal` becomes the calm baseline; the highest-RMS clip becomes the expressive peak.
-4. **Result** — combined pass/fail JSON, identical in shape to the notebook's `build_module1_result`.
+4. **Result** — combined pass/fail JSON.
 
-The recorded clip's `t=0` is the start of step 1 (the 3s pre-roll is not recorded), so it lines up
-with the fixed analysis windows: liveness 0–8s, then normal/loud/happy/angry/sad at 7s each (≈43s).
+The recorded clip's `t=0` is the start of step 1, so it lines up with the fixed analysis windows:
+liveness 0–8s, then normal/loud/happy/angry/sad at 7s each (≈43s).
 
-## Run (local, PC webcam)
+---
+
+## Using Module 2 — voice cloning
+
+### From the browser (`/module2`)
+
+Pick a **session** and a **model**, then click **Run cloning**. Progress (model load, then each
+clip) streams live; when it finishes, the generated clips appear grouped by sentence with an audio
+player each, next to the **original reference clip**. Use **Load existing outputs** to listen to a
+previous run without re-generating.
+
+> To trigger cloning, the server must run in the environment where the Module 2 deps (torch +
+> voxcpm) are installed. If `torch.cuda.is_available()` is False in the server process it falls back
+> to CPU (much slower, but still works).
+
+### From the command line (batch, at any time)
 
 ```bash
-# system deps (Debian/Ubuntu): ffmpeg for normalization + audio cut
-sudo apt-get update && sudo apt-get install -y ffmpeg
-
 cd live_demo_of_voice_capture
-pip install -r requirements.txt
-
-uvicorn app:app --host 0.0.0.0 --port 8000
+python -m module2.run --list-models          # -> voxcpm
+python -m module2.run --list-sessions        # sessions under output/ that have clips
+python -m module2.run --session <id> --model voxcpm
 ```
 
-Open <http://localhost:8000>, then either:
-- click **Open Camera & Start**, grant camera/mic, and follow the prompts (live capture), or
-- pick a video and click **Upload & Analyze** to run the same analysis on an already-recorded clip.
+Output lands in `output/<session_id>/module2/<model>/`: one WAV per (test sentence × style
+variation) plus a `manifest.json` with per-clip real-time-factor. Each model writes to its own
+subfolder, so running a second model later never clobbers the first — you end up with sibling
+`module2/voxcpm/`, `module2/dots_tts/`, … folders holding the same sentences to A/B by ear.
 
-## Remote testing from a phone (HTTPS via ngrok)
+### Adding another cloning model
 
-Browsers only allow camera access in a **secure context** (HTTPS or `localhost`), so testing from a
-phone needs an HTTPS URL. ngrok provides one:
+Models are pluggable: write one adapter file in `module2/adapters/` (a `CloningAdapter` subclass)
+and add one line to `module2/registry.py`. `runner.py`, `reference.py`, and `run.py` stay untouched.
+The adapter interface already carries the flags that differ between models
+(`requires_reference_text`, `supports_style_prompt`) — e.g. a model that needs the reference
+transcript gets it from Module 1's fixed enrollment sentences (`protocol.EMOTION_SENTENCES`) with no
+speech-to-text step.
+
+---
+
+## Testing from a phone (HTTPS via ngrok)
+
+Browsers only allow camera access over **HTTPS or `localhost`**, so capturing from a phone needs an
+HTTPS URL. ngrok provides one:
 
 ```bash
 # terminal 1
@@ -76,80 +126,56 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 ngrok http 8000
 ```
 
-Open the printed `https://<random>.ngrok-free.app` URL on the phone → **Open Camera & Start** now uses
-the **phone's** front camera. (For real deployment, use a proper TLS certificate instead of ngrok.)
+Open the printed `https://<random>.ngrok-free.app` URL on the phone → **Open Camera & Start** now
+uses the **phone's** camera. (For real deployment, use a proper TLS certificate instead of ngrok.)
 
-## Cross-check against the notebook
+---
 
-Point the notebook's `TEST_VIDEO_PATH` at a saved `recordings/*_norm.mp4` and run it top to bottom —
-the liveness pass/fail, per-emotion quality, and chosen anchors should match the UI.
+## Architecture — capture in the browser, analysis on the server
 
-## Anti-spoofing (future)
+- **Capture is client-side.** The browser uses `getUserMedia` + `MediaRecorder` to record mic +
+  camera together, drawing the guided overlay (head-turn + 5 emotion prompts, with a countdown) over
+  a `<video>` element. This is why it uses whatever device opens the page — and why it works after
+  deployment, where the **server has no camera**.
+- **Analysis is server-side.** The recorded clip is uploaded; the server runs the pipeline
+  (MediaPipe yaw liveness, librosa/noisereduce audio quality, anchor selection) and streams
+  step/log/result events back over Server-Sent Events (`/events`).
+- **Upload normalization.** `MediaRecorder` output (WebM on Chrome/Firefox, MP4 on iOS Safari) often
+  has unreliable fps/duration metadata that would break frame-index seeking and timestamp cuts, so
+  every upload is first re-encoded to a **constant-frame-rate MP4** (`ffmpeg -r 30 libx264 …`), then
+  analyzed. This makes analysis codec-agnostic.
 
-`pipeline.run_analysis()` has a clearly-marked hook after the yaw check where a MiniFASNetV2 ONNX
-check would slot in. It is disabled by default (`ANTISPOOF_MODEL_PATH = None`).
+### Where files are stored (per session)
 
-## Module 2 — Voice Cloning (batch)
+Each attempt gets a unique **session id** (`<name>_<timestamp>_<hex>`, returned by `/upload`) and
+nothing is overwritten across runs:
 
-Once Module 1 has produced a session's clips, `module2/` clones that voice with a TTS model and
-generates a fixed set of test sentences so different models can be **compared by listening**. It is a
-standalone **offline batch runner** — the cloning models are heavy (~5GB weights, GPU), so they run
-outside the web app, once per model, whenever you want.
+- `recordings/capture_<session_id>.<ext>` — the uploaded clip (`…_norm.mp4` is its normalized copy).
+- `output/<session_id>/<emotion>_raw.wav` and `…_clean.wav` — the cut + denoised audio per emotion.
+- `output/<session_id>/module2/<model>/` — Module 2's generated clips + `manifest.json`.
 
-Models are pluggable: each one is a `CloningAdapter` subclass (`module2/adapters/`) registered in
-`module2/registry.py`. Today only **VoxCPM2** (`voxcpm`) is wired; adding another (dots.tts,
-OpenVoice, …) is exactly *one adapter file + one registry line* — `runner.py`, `reference.py`, and
-`run.py` never change. The adapter interface already carries the flags that differ between models
-(`requires_reference_text`, `supports_style_prompt`), so e.g. a model that needs the reference
-transcript gets it from Module 1's fixed enrollment sentences (`protocol.EMOTION_SENTENCES`) with no
-speech-to-text step.
+---
 
-```bash
-cd live_demo_of_voice_capture
-pip install -r module2/requirements.txt        # heavy: torch + voxcpm (GPU env)
+## Project layout
 
-python -m module2.run --list-models            # -> voxcpm
-python -m module2.run --list-sessions          # sessions under output/ that have clips
-python -m module2.run --session <id> --model voxcpm
-```
+| Path              | Role                                                                        |
+|-------------------|-----------------------------------------------------------------------------|
+| `app.py`          | FastAPI routes: `/`, `/config`, `/upload`, `/events` (Module 1) + `/module2*` (Module 2) |
+| `session.py`      | `AnalysisSession` — normalizes an uploaded clip, runs the pipeline, feeds the event queue |
+| `pipeline.py`     | Analysis functions + `run_analysis()`; auto-downloads the face-landmarker model |
+| `protocol.py`     | Shared timing constants + `web_protocol()` (served via `/config`)           |
+| `static/`         | `index.html`/`app.js`/`style.css` (Module 1) and `module2.html`/`.js`/`.css` (compare page) |
+| `module2/`        | Pluggable voice-cloning package: `adapters/`, `registry.py`, `runner.py`, `service.py`, `run.py` |
+| `requirements.txt`| All dependencies (Module 1 + Module 2)                                       |
 
-Output lands in `output/<session_id>/module2/<model>/`: one WAV per (test sentence × style
-variation) plus a `manifest.json` recording the model, params, device, and per-clip real-time-factor.
-Because each model writes to its own subfolder, running a second model later never clobbers the
-first — you end up with sibling `module2/voxcpm/`, `module2/dots_tts/`, … folders holding the same
-sentences to A/B by ear. Test sentences and style points live in `module2/test_sentences.py`
-(shared across all models, so the comparison is fair).
+---
 
-### Test it from the browser
+## Troubleshooting
 
-The same runner is wired into the web app at **`/module2`** (linked from the Module 1 page header).
-Because triggering a run loads the model, **uvicorn must run in the GPU env** (torch + voxcpm), not
-the light Module 1 env:
-
-```bash
-cd live_demo_of_voice_capture
-# run the server from the environment that has module2/requirements.txt installed:
-python -m uvicorn app:app --host 0.0.0.0 --port 8000
-# open http://localhost:8000/module2
-```
-
-On the compare page: pick a **session** and **model**, click **Run cloning** — progress (model
-load, then each clip) streams live over SSE, and when it finishes the generated clips appear grouped
-by sentence with an audio player each, next to the **original reference clip** and any other models
-already run for that session. Use **Load existing outputs** to listen without re-generating. The web
-endpoints (`/module2/models`, `/module2/sessions`, `/module2/run`, `/module2/events`,
-`/module2/result`) live in `app.py`; the background-run glue is `module2/service.py`.
-
-> Note: if `torch.cuda.is_available()` is False in the server process it falls back to CPU (much
-> slower, but still works). Make sure the GPU isn't already occupied and that the server env sees it.
-
-## Files
-
-| File          | Role                                                               |
-|---------------|--------------------------------------------------------------------|
-| `app.py`      | FastAPI routes: `/`, `/config` (protocol for the browser), `/upload`, `/events` (SSE) |
-| `session.py`  | `AnalysisSession` — normalizes an uploaded clip, runs the pipeline, feeds the event queue. `CaptureSession` (legacy server-side recorder) is kept but no longer wired to the UI |
-| `pipeline.py` | Analysis functions lifted from the notebook + `run_analysis()`      |
-| `protocol.py` | Shared timing constants + `web_protocol()` (served via `/config`)  |
-| `static/`     | `index.html` (`<video>` + overlay), `app.js` (browser capture), `style.css` |
-| `module2/`    | Pluggable voice-cloning batch runner (adapters + registry + CLI); see "Module 2" above |
+| Symptom | Fix |
+|---|---|
+| `ffmpeg: command not found` | Install ffmpeg (Quick start step 1). |
+| `face_landmarker.task not found` | It auto-downloads on first analysis; check network access to `storage.googleapis.com`. |
+| Cloning runs on CPU / very slow | `torch.cuda.is_available()` is False in the server — install the CUDA torch build and make sure the GPU is free and visible to the server process. |
+| `a cloning run is already in progress` | Only one cloning run at a time (GPU-bound). Wait for it to finish. |
+| Camera won't open on another device | You need HTTPS — use ngrok (see phone testing above). |
