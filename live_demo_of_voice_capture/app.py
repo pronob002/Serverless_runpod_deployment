@@ -20,14 +20,46 @@ import shutil
 import asyncio
 
 from fastapi import FastAPI, Request, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import protocol
 from session import AnalysisSession, RECORDINGS_DIR
 from module2 import service as m2
+from schemas import (
+    ConfigResponse, ErrorResponse, HealthResponse, Module2Manifest, Module2ModelsResponse,
+    Module2ReferenceInfo, Module2ResultResponse, Module2RunRequest,
+    Module2RunResponse, Module2SessionsResponse, Module2StatusResponse,
+    UploadResponse,
+)
 
-app = FastAPI(title="Module 1 — Identity & Voice Capture")
+app = FastAPI(
+    title="Voice Capture & Cloning API",
+    description=(
+        "Module 1 (identity/voice capture + liveness analysis) and Module 2 (voice cloning) "
+        "backend. Long-running work (capture analysis, cloning) streams progress over "
+        "Server-Sent Events (`/events`, `/module2/events`) rather than a single response."
+    ),
+    version="1.0.0",
+    openapi_tags=[
+        {"name": "Module 1", "description": "Capture upload + liveness/voice analysis."},
+        {"name": "Module 2", "description": "Voice cloning: run models, list results, compare clips."},
+    ],
+)
+
+# Frontend team: if the UI is served from a different origin than this API (e.g. a separate dev
+# server), the browser needs CORS allowed here. Comma-separated list of allowed origins; "*" (the
+# default) allows any origin, which is fine for demos/dev but should be locked down for a real
+# deployment (see README → Deployment).
+_allowed_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "*")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if _allowed_origins == "*" else [o.strip() for o in _allowed_origins.split(",")],
+    allow_credentials=_allowed_origins != "*",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(HERE, "static")
@@ -81,20 +113,42 @@ def _maybe_autoclone(session_id: str, output_dir: str, result: dict | None) -> d
             "session_id": session_id, "model": DEFAULT_MODEL}
 
 
-@app.get("/")
+@app.get("/health", tags=["Ops"], summary="Liveness/readiness probe", response_model=HealthResponse)
+def health():
+    """Lightweight status for load balancers / container orchestrators / uptime checks. Does not
+    do any real work, so it's safe to poll frequently."""
+    try:
+        import torch
+        cuda_available = torch.cuda.is_available()
+    except ImportError:
+        # torch isn't installed (Module 1-only deployment) — not an error, just no GPU to report.
+        cuda_available = False
+    return JSONResponse({
+        "status": "ok",
+        "module1_active": bool(session is not None and session.active),
+        "module2_active": bool(cloning_run is not None and cloning_run.active),
+        "cuda_available": cuda_available,
+    })
+
+
+@app.get("/", include_in_schema=False)
 def index():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
-@app.get("/config")
+@app.get("/config", tags=["Module 1"], summary="Get the capture protocol",
+         response_model=ConfigResponse)
 def config():
     """The capture protocol (timing/prompts) the browser overlay drives itself from, so the
     client guided timeline can't drift from the fixed windows the server analyzes by."""
     return JSONResponse(protocol.web_protocol())
 
 
-@app.post("/upload")
-async def upload(file: UploadFile = File(...), name: str = Form("")):
+@app.post("/upload", tags=["Module 1"], summary="Upload a clip and start analysis",
+          response_model=UploadResponse, status_code=202,
+          responses={409: {"model": ErrorResponse, "description": "A session is already running."}})
+async def upload(file: UploadFile = File(..., description="The recorded/uploaded video clip."),
+                  name: str = Form("", description="Optional user-typed label for the recording.")):
     """Receive a recorded clip (from live browser capture or a pre-recorded file) and analyze it.
 
     The blob is saved, then handed to AnalysisSession, which normalizes it to a constant-frame-rate
@@ -104,6 +158,9 @@ async def upload(file: UploadFile = File(...), name: str = Form("")):
     `name` is an optional user-typed label for the recording. It's slugged and prefixed onto the
     session id so the folder is recognisable later (e.g. in the Module 2 compare dropdown) — a way
     to record a clip now and come back to test cloning on it another time.
+
+    Progress and the final pass/fail result are **not** in this response — connect to `GET /events`
+    (Server-Sent Events) right after this call to stream them.
     """
     global session
     if session is not None and session.active:
@@ -135,7 +192,13 @@ async def upload(file: UploadFile = File(...), name: str = Form("")):
                          "auto_clone": AUTO_CLONE}, status_code=202)
 
 
-@app.get("/events")
+@app.get("/events", tags=["Module 1"], summary="Stream Module 1 analysis progress (SSE)",
+         responses={200: {"content": {"text/event-stream": {}}, "description": (
+             "Server-Sent Events. Each `data:` line is a JSON object with a `type` field: "
+             "`log` ({type, text}), `step` (per-stage progress), `result` (the final pass/fail "
+             "payload), or `done` ({type, status}) which ends the stream. Connect immediately "
+             "after POST /upload."
+         )}})
 async def events(request: Request):
     """SSE stream draining the active session's event queue."""
     async def event_stream():
@@ -173,22 +236,26 @@ async def events(request: Request):
 # (`pip install -r module2/requirements.txt`). Listing sessions/models works without them; the
 # actual /module2/run will report an import error over the event stream if they're missing.
 
-@app.get("/module2")
+@app.get("/module2", include_in_schema=False)
 def module2_page():
     return FileResponse(os.path.join(STATIC_DIR, "module2.html"))
 
 
-@app.get("/module2/models")
+@app.get("/module2/models", tags=["Module 2"], summary="List available cloning models",
+         response_model=Module2ModelsResponse)
 def module2_models():
     return JSONResponse({"models": m2.list_models()})
 
 
-@app.get("/module2/sessions")
+@app.get("/module2/sessions", tags=["Module 2"], summary="List sessions eligible for cloning",
+         response_model=Module2SessionsResponse)
 def module2_sessions():
+    """Only Module 1 sessions that captured usable voice anchors are listed."""
     return JSONResponse({"sessions": m2.list_sessions(OUTPUT_ROOT)})
 
 
-@app.get("/module2/status")
+@app.get("/module2/status", tags=["Module 2"], summary="Current cloning run status",
+         response_model=Module2StatusResponse)
 def module2_status():
     """Whether a cloning run is active and for which session/model — lets the compare page attach
     to a run that was auto-started by a capture (Option B) and show its live progress."""
@@ -201,9 +268,12 @@ def module2_status():
     })
 
 
-@app.get("/module2/result")
+@app.get("/module2/result", tags=["Module 2"], summary="Get a completed cloning run's manifest",
+         response_model=Module2ResultResponse,
+         responses={404: {"model": ErrorResponse, "description": "No outputs for this session/model yet."}})
 def module2_result(session: str, model: str):
-    """Manifest + reference clip for an already-generated (session, model) pair."""
+    """Manifest + reference clip for an already-generated (session, model) pair. Poll this after
+    `/module2/events` emits `done`, or to load a previous run without re-generating."""
     manifest = m2.load_manifest(OUTPUT_ROOT, session, model)
     if manifest is None:
         return JSONResponse({"error": "no outputs for this session/model yet"}, status_code=404)
@@ -214,18 +284,23 @@ def module2_result(session: str, model: str):
     return JSONResponse({"manifest": manifest, "reference": ref})
 
 
-@app.post("/module2/run")
-async def module2_run(request: Request):
-    """Start a cloning run for {session_id, model} on a background thread."""
+@app.post("/module2/run", tags=["Module 2"], summary="Start a cloning run",
+          response_model=Module2RunResponse, status_code=202,
+          responses={
+              400: {"model": ErrorResponse, "description": "Unknown model."},
+              404: {"model": ErrorResponse, "description": "Session not found."},
+              409: {"model": ErrorResponse, "description": "A cloning run is already in progress."},
+          })
+async def module2_run(body: Module2RunRequest):
+    """Start a cloning run for `{session_id, model}` on a background thread (GPU-bound — only one
+    run at a time across the whole server). Connect to `GET /module2/events` right after this call
+    to stream progress, then `GET /module2/result` for the final manifest."""
     global cloning_run
     if cloning_run is not None and cloning_run.active:
         return JSONResponse({"error": "a cloning run is already in progress"}, status_code=409)
 
-    body = await request.json()
-    session_id = body.get("session_id")
-    model = body.get("model")
-    if not session_id or not model:
-        return JSONResponse({"error": "session_id and model are required"}, status_code=400)
+    session_id = body.session_id
+    model = body.model
     if model not in m2.list_models():
         return JSONResponse({"error": f"unknown model '{model}'"}, status_code=400)
 
@@ -239,7 +314,14 @@ async def module2_run(request: Request):
                         status_code=202)
 
 
-@app.get("/module2/events")
+@app.get("/module2/events", tags=["Module 2"], summary="Stream cloning progress (SSE)",
+         responses={200: {"content": {"text/event-stream": {}}, "description": (
+             "Server-Sent Events. Each `data:` line is a JSON object with a `type` field: "
+             "`log` ({type, text}), `status` ({type, stage: loading|generating|done, detail}), "
+             "`clip` (one manifest clip entry as each is generated), `result` ({type, manifest}), "
+             "or `done` ({type, status}) which ends the stream. Connect immediately after "
+             "POST /module2/run."
+         )}})
 async def module2_events(request: Request):
     """SSE stream draining the active cloning run's event queue."""
     async def event_stream():

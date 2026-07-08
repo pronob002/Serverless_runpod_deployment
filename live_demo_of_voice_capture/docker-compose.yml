@@ -1,0 +1,23 @@
+services:
+  voice-capture:
+    build: .
+    image: voice-capture-demo:latest
+    ports:
+      - "8000:8000"
+    environment:
+      # Turn off auto-chaining into Module 2 (voice cloning) after a passing capture.
+      - MODULE2_AUTOCLONE=${MODULE2_AUTOCLONE:-1}
+      - MODULE2_DEFAULT_MODEL=${MODULE2_DEFAULT_MODEL:-voxcpm}
+    volumes:
+      # Recorded clips, analysis outputs, and the auto-downloaded face_landmarker.task model
+      # persist on the host across container rebuilds/restarts.
+      - ./recordings:/app/live_demo_of_voice_capture/recordings
+      - ./output:/app/live_demo_of_voice_capture/output
+      # Hugging Face cache for the VoxCPM2 weights (~5GB) — avoids re-downloading on every rebuild.
+      - hf_cache:/root/.cache/huggingface
+    # GPU access is added by overlaying docker-compose.gpu.yml (see run.sh) — this base file
+    # stays GPU-free so it works unmodified on any host, with or without an NVIDIA card.
+    restart: unless-stopped
+
+volumes:
+  hf_cache:
