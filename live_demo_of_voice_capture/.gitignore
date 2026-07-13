@@ -1,0 +1,28 @@
+# Environments and secrets
+.env
+
+# Local database/storage credentials
+*.env
+
+# Outputs and records
+output/
+recordings/
+
+# Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Large ML/MediaPipe Models
+*.task
+
+# IDE specific settings
+.vscode/
+.idea/
+.project
+.pydevproject
+
+# System files
+Thumbs.db
+Desktop.ini
