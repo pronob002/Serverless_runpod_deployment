@@ -1,9 +1,18 @@
-import os
-import json
-import shutil
-import boto3
-from supabase import create_client, Client
-import runpod
+import sys
+import traceback
+print(">>> BOOTING RUNPOD WORKER <<<", flush=True)
+
+try:
+    import os
+    import json
+    import shutil
+    import boto3
+    from supabase import create_client, Client
+    import runpod
+except Exception as e:
+    print(f"CRITICAL INIT ERROR: {e}", flush=True)
+    traceback.print_exc(file=sys.stdout)
+    sys.exit(1)
 
 # Initialize environment variables from .env if present (useful for local development/testing)
 if os.path.exists(".env"):
