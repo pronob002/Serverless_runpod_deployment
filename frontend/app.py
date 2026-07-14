@@ -113,10 +113,40 @@ class RunPodCloningRun:
 
     def _run(self):
         try:
+            # 1. Upload reference voice to Supabase Storage first
+            self._log("Uploading reference voice 'normal_clean.wav' to Supabase Storage...")
+            self._emit({"type": "status", "stage": "loading", "detail": "Uploading reference voice..."})
+            
+            access_key = os.environ.get("SUPABASE_STORAGE_ACCESS_KEY")
+            secret_key = os.environ.get("SUPABASE_STORAGE_SECRET_KEY")
+            endpoint_url = os.environ.get("SUPABASE_STORAGE_ENDPOINT_URL")
+            bucket_name = os.environ.get("SUPABASE_STORAGE_BUCKET_NAME", "audiobooks")
+            
+            if not all([access_key, secret_key, endpoint_url]):
+                raise Exception("Missing Supabase S3 storage configurations in frontend/.env")
+                
+            import boto3
+            from botocore.client import Config
+            s3 = boto3.client(
+                's3',
+                endpoint_url=endpoint_url,
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                config=Config(signature_version='s3v4')
+            )
+            
+            local_ref_path = os.path.join(self.session_dir, "normal_clean.wav")
+            if not os.path.exists(local_ref_path):
+                raise Exception(f"Reference voice 'normal_clean.wav' not found at {local_ref_path}")
+                
+            s3_key = f"{self.session_id}/normal_clean.wav"
+            s3.upload_file(local_ref_path, bucket_name, s3_key)
+            self._log("Reference voice successfully uploaded to Supabase Storage.")
+
             self._log(f"Triggering RunPod Serverless job for model '{self.model_name}'...")
             self._emit({"type": "status", "stage": "loading", "detail": "Starting RunPod worker..."})
             
-            # 1. Trigger RunPod serverless job
+            # 2. Trigger RunPod serverless job
             url = f"https://api.runpod.ai/v2/{RUNPOD_ENDPOINT_ID}/run"
             headers = {
                 "Authorization": f"Bearer {RUNPOD_API_KEY}",

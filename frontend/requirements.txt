@@ -9,3 +9,4 @@ noisereduce
 python-multipart
 httpx
 python-dotenv
+boto3
