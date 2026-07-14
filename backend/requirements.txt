@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-celery
-redis
-supabase
-python-dotenv
-python-multipart

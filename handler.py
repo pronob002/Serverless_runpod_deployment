@@ -31,22 +31,37 @@ SUPABASE_STORAGE_SECRET_KEY = os.environ.get("SUPABASE_STORAGE_SECRET_KEY")
 SUPABASE_STORAGE_ENDPOINT_URL = os.environ.get("SUPABASE_STORAGE_ENDPOINT_URL")
 SUPABASE_STORAGE_BUCKET_NAME = os.environ.get("SUPABASE_STORAGE_BUCKET_NAME", "audiobooks")
 
-# Initialize Supabase Client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+# Lazy client getters to prevent startup/import failures when env vars are missing
+supabase_client = None
+s3_client_instance = None
 
-# Initialize S3 Client for Supabase Storage
-s3_client = boto3.client(
-    "s3",
-    endpoint_url=SUPABASE_STORAGE_ENDPOINT_URL,
-    aws_access_key_id=SUPABASE_STORAGE_ACCESS_KEY,
-    aws_secret_access_key=SUPABASE_STORAGE_SECRET_KEY,
-    config=boto3.session.Config(signature_version="s3v4")
-)
+def get_supabase_client():
+    global supabase_client
+    if supabase_client is None:
+        if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables are required.")
+        supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    return supabase_client
+
+def get_s3_client():
+    global s3_client_instance
+    if s3_client_instance is None:
+        s3_client_instance = boto3.client(
+            "s3",
+            endpoint_url=SUPABASE_STORAGE_ENDPOINT_URL,
+            aws_access_key_id=SUPABASE_STORAGE_ACCESS_KEY,
+            aws_secret_access_key=SUPABASE_STORAGE_SECRET_KEY,
+            config=boto3.session.Config(signature_version="s3v4")
+        )
+    return s3_client_instance
 
 def handler(job):
     """
     RunPod Serverless handler for voice cloning.
     """
+    s3_client = get_s3_client()
+    supabase = get_supabase_client()
+
     job_input = job.get("input", {})
     session_id = job_input.get("session_id")
     model = job_input.get("model", "voxcpm2")

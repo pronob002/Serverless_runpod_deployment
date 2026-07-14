@@ -1,0 +1,8 @@
+# Serverless RunPod Voice Cloning dependencies
+numpy
+soundfile
+torch
+voxcpm
+runpod
+boto3
+supabase
