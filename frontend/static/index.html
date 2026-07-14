@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Module 1 — Identity & Voice Capture</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Module 1 — Identity &amp; Voice Capture</h1>
+    <span class="subtitle">Guided capture &amp; analysis demo</span>
+    <a class="header-link" href="/module2" style="margin-left:auto;color:var(--dim);font-size:.85rem;text-decoration:none;">Module 2 — Voice Cloning →</a>
+  </header>
+
+  <main>
+    <!-- LEFT: this device's camera (captured in the browser) -->
+    <section class="panel camera-panel">
+      <div class="video-wrap">
+        <video id="feed" autoplay muted playsinline></video>
+        <!-- Guided overlay drawn over the live video during capture -->
+        <div id="overlay" class="overlay hidden">
+          <div class="overlay-top">
+            <div id="ovHeadline" class="ov-headline"></div>
+            <div id="ovSubtext" class="ov-subtext"></div>
+            <div class="ov-bar"><div id="ovBarFill" class="ov-bar-fill"></div></div>
+          </div>
+          <div id="ovCountdown" class="ov-countdown"></div>
+        </div>
+        <div id="placeholder" class="placeholder">Camera idle — press Start</div>
+      </div>
+
+      <div class="name-row">
+        <label for="nameInput">Recording name</label>
+        <input id="nameInput" type="text" placeholder="e.g. riad-enrollment-1" autocomplete="off" />
+      </div>
+      <p class="hint">
+        Give this recording a name before you start. It labels the saved session so you can find it
+        later (in the Module 2 compare page) and test voice cloning on it another time.
+      </p>
+
+      <div class="controls">
+        <button id="startBtn" class="btn btn-primary">● Open Camera &amp; Start</button>
+        <button id="stopBtn" class="btn btn-ghost" disabled>■ Stop</button>
+      </div>
+      <p class="hint">
+        Uses <b>this device's</b> camera (your phone's camera on a phone, the webcam in a PC browser).
+        Follow the on-screen prompts: turn your head <b>left</b> then <b>right</b>, then read each
+        sentence in the requested emotion.
+      </p>
+
+      <div class="divider"><span>or</span></div>
+
+      <div class="upload-row">
+        <input id="fileInput" type="file" accept="video/*" />
+        <button id="uploadBtn" class="btn btn-ghost">⬆ Upload &amp; Analyze</button>
+      </div>
+      <p class="hint">
+        Already recorded a clip following the protocol (≈43s)? Upload it to run the same
+        analysis without using the camera.
+      </p>
+    </section>
+
+    <!-- RIGHT: steps + logs -->
+    <section class="panel status-panel">
+      <div class="status-header">
+        <h2>Pipeline</h2>
+        <span id="overallBadge" class="badge badge-idle">Idle</span>
+      </div>
+
+      <ol id="steps" class="steps"></ol>
+
+      <div class="log-section">
+        <h3>Logs</h3>
+        <div id="log" class="log"></div>
+      </div>
+
+      <div id="module2Banner" class="m2-banner hidden"></div>
+
+      <div id="resultBox" class="result-box hidden">
+        <h3>Final result</h3>
+        <pre id="resultJson"></pre>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

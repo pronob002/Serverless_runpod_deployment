@@ -98,3 +98,51 @@ On success, the handler generates emotional clone clips, uploads them to your Su
   }
 }
 ```
+
+---
+
+## 💻 Step 5: Local Frontend Web Client (No GPU Required!)
+
+You can run the web capture and voice comparison frontend locally on your laptop without needing a local GPU. The local FastAPI server handles the camera capture, uploads it to Supabase, and proxies the heavy voice cloning execution to your RunPod Serverless worker.
+
+### 1. Install System Dependencies
+Make sure you have **Python 3.10+** and **ffmpeg** installed on your local machine.
+
+### 2. Install Python Packages
+Navigate to the `frontend/` directory and install the requirements:
+```bash
+# Navigate to the frontend folder
+cd frontend
+
+# Create a virtual environment (optional but recommended)
+python -m venv venv
+# Activate it:
+# - On Windows: venv\Scripts\activate
+# - On macOS/Linux: source venv/bin/activate
+
+# Install the dependencies
+pip install -r requirements.txt
+```
+
+### 3. Set Up Local Environment Variables
+1. Copy the template environment file:
+   ```bash
+   cp .env.example .env
+   ```
+2. Open `.env` and fill in your Supabase credentials, RunPod Endpoint ID, and RunPod API Key.
+
+### 4. Launch the Web App
+Start the local FastAPI development server:
+```bash
+python -m uvicorn app:app --port 8000
+```
+
+### 5. Access the Web Interface
+1. Open **`http://localhost:8000`** in your browser.
+2. Complete **Module 1 (Identity & Voice Capture)**:
+   * Perform the head-turn liveness check in front of your camera.
+   * Read the 5 emotional prompts.
+   * Click **Upload & Validate**.
+3. Once the capture passes validation, the local server will **automatically invoke your RunPod Serverless GPU worker** to clone the voice.
+4. Go to **`http://localhost:8000/module2`** to listen to and compare your original voice clips against the cloned variations side-by-side!
+
